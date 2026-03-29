@@ -10,13 +10,14 @@
   "installCommand": "pnpm install",
   "scripts": {
     "client:dev": "vite",
-    "build": "tsc -b && vite build && tsc -p api/tsconfig.json",
+    "build": "npx prisma generate && tsc -b && vite build && tsc -p api/tsconfig.json",
     "lint": "eslint .",
     "preview": "vite preview",
     "check": "tsc --noEmit",
     "server:dev": "nodemon",
     "dev": "concurrently \"npm run client:dev\" \"npm run server:dev\"",
-    "postbuild": "npx tsc -p api/tsconfig.json"
+    "postbuild": "npx tsc -p api/tsconfig.json",
+    "postinstall": "npx prisma generate"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
