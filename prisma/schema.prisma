@@ -1,0 +1,306 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Company {
+  id        String   @id @default(uuid())
+  name      String
+  domain    String?  @unique
+  plan      String   @default("free")
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users            User[]
+  departments      Department[]
+  risks            Risk[]
+  riskMeasures     RiskMeasure[]
+  kris             KRI[]
+  kriMonthlyData   KRIMonthlyData[]
+  emergencyPlans   EmergencyPlan[]
+  riskChecks       RiskCheck[]
+  suppliers        Supplier[]
+  trainings        Training[]
+  trainingStats    TrainingStats[]
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  name         String?
+  password     String
+  phone        String?
+  role         String    @default("user")
+  status       String    @default("active")
+  lastLogin    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  companyId    String?
+  company      Company?  @relation(fields: [companyId], references: [id])
+  deptId       String?
+  dept         Department? @relation(fields: [deptId], references: [id])
+
+  ownedRisks         Risk[]         @relation("RiskOwner")
+  ownedMeasures      RiskMeasure[]  @relation("MeasureOwner")
+  ownedChecks        RiskCheck[]    @relation("CheckOwner")
+}
+
+model Department {
+  id        String   @id @default(uuid())
+  name      String
+  parentId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  companyId String?
+  company   Company?  @relation(fields: [companyId], references: [id])
+  parent    Department? @relation("DepartmentHierarchy", fields: [parentId], references: [id])
+  children  Department[] @relation("DepartmentHierarchy")
+
+  users         User[]
+  risks         Risk[]
+  measures      RiskMeasure[]
+  collabMeasures RiskMeasure[] @relation("CollaboratorDept")
+  kris          KRI[]
+  emergencyPlans EmergencyPlan[]
+  riskChecks    RiskCheck[]
+}
+
+model Risk {
+  id                  String    @id @default(uuid())
+  riskNo              String
+  name                String
+  category            String?
+  description         String?
+  consequence         String?
+  source              String?
+  likelihood          Int       @default(1)
+  impact              Int       @default(1)
+  riskValue           Int?
+  riskLevel           String?
+  responseStrategy    String?
+  status              String    @default("active")
+  lastEvaluateAt      DateTime?
+  nextEvaluateAt      DateTime?
+  residualRiskValue   Int?
+  residualRiskLevel   String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  companyId String?
+  company   Company?  @relation(fields: [companyId], references: [id])
+  deptId    String?
+  dept      Department? @relation(fields: [deptId], references: [id])
+  ownerId   String?
+  owner     User?     @relation("RiskOwner", fields: [ownerId], references: [id])
+
+  measures RiskMeasure[]
+
+  @@unique([companyId, riskNo])
+}
+
+model RiskMeasure {
+  id               String    @id @default(uuid())
+  measureNo        Int
+  description      String
+  startDate        DateTime?
+  planDate         DateTime?
+  actualDate       DateTime?
+  budget           Float?
+  actualCost       Float?
+  status           String    @default("pending")
+  effectEvaluation String?
+  remainingIssue   String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  companyId   String?
+  company     Company?    @relation(fields: [companyId], references: [id])
+  riskId      String?
+  risk        Risk?       @relation(fields: [riskId], references: [id])
+  deptId      String?
+  dept        Department? @relation(fields: [deptId], references: [id])
+  ownerId     String?
+  owner       User?       @relation("MeasureOwner", fields: [ownerId], references: [id])
+  collabDeptId String?
+  collabDept   Department? @relation("CollaboratorDept", fields: [collabDeptId], references: [id])
+}
+
+model KRI {
+  id               String    @id @default(uuid())
+  kriNo            String
+  name             String
+  linkedRiskNo     String?
+  formula          String?
+  frequency        String?
+  unit             String?
+  target           Float?
+  warningThreshold Float?
+  alertThreshold   Float?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  companyId String?
+  company   Company?    @relation(fields: [companyId], references: [id])
+  deptId    String?
+  dept      Department? @relation(fields: [deptId], references: [id])
+
+  monthlyData KRIMonthlyData[]
+
+  @@unique([companyId, kriNo])
+}
+
+model KRIMonthlyData {
+  id        String   @id @default(uuid())
+  month     String
+  value     Float?
+  trend     String?
+  status    String?
+  createdAt DateTime @default(now())
+
+  kriId     String?
+  kri       KRI?     @relation(fields: [kriId], references: [id])
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+}
+
+model EmergencyPlan {
+  id               String    @id @default(uuid())
+  planNo           String
+  name             String
+  linkedRiskNo     String?
+  applicableScenario String?
+  triggerCondition String?
+  commander        String?
+  siteCommander    String?
+  responseTimeLimit String?
+  keySteps         String?
+  resourceNeeds    String?
+  drillFrequency   String?
+  lastDrill        DateTime?
+  nextDrill        DateTime?
+  drillResult      String?
+  improvement      String?
+  version          String?
+  latestRevision   DateTime?
+  status           String    @default("active")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  companyId String?
+  company   Company?    @relation(fields: [companyId], references: [id])
+  deptId    String?
+  dept      Department? @relation(fields: [deptId], references: [id])
+
+  @@unique([companyId, planNo])
+}
+
+model RiskCheck {
+  id           String    @id @default(uuid())
+  checkNo      String
+  area         String?
+  category     String?
+  checkItem    String
+  standard     String?
+  method       String?
+  result       String?
+  issueDesc    String?
+  riskLevel    String?
+  measure      String?
+  deadline     DateTime?
+  verifyDate   DateTime?
+  verifyResult String?
+  verifier     String?
+  checkDate    DateTime
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  companyId String?
+  company   Company?    @relation(fields: [companyId], references: [id])
+  ownerId   String?
+  owner     User?       @relation("CheckOwner", fields: [ownerId], references: [id])
+  deptId    String?
+  dept      Department? @relation(fields: [deptId], references: [id])
+}
+
+model Supplier {
+  id                  String    @id @default(uuid())
+  supplierNo          String
+  name                String
+  supplyCategory      String?
+  supplyItems         String?
+  supplyShare         Float?
+  cooperationYears    Int?
+  replaceability      Int?
+  onTimeRate          Float?
+  qualityRate         Float?
+  priceCompetitiveness Int?
+  financialStability  Int?
+  serviceCooperation  Int?
+  totalScore          Float?
+  riskLevel           String?
+  hasAgreement        String?
+  agreementExpire     DateTime?
+  improvementRequire  String?
+  evaluator           String?
+  status              String    @default("active")
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, supplierNo])
+}
+
+model Training {
+  id              String    @id @default(uuid())
+  trainingNo      String
+  trainingDate    DateTime
+  topic           String
+  category        String?
+  level           String?
+  targetDept      String?
+  planCount       Int?
+  actualCount     Int?
+  hours           Float?
+  instructor      String?
+  instructorSource String?
+  method          String?
+  material        String?
+  examMethod      String?
+  passRate        Float?
+  effectScore     Float?
+  feedback        String?
+  improvement     String?
+  remark          String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+}
+
+model TrainingStats {
+  id              String   @id @default(uuid())
+  statType        String
+  target          String?
+  q1Actual        String?
+  q2Actual        String?
+  q3Actual        String?
+  q4Actual        String?
+  yearTotal       String?
+  achievementRate String?
+  year            Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+}
