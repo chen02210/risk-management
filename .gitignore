@@ -38,7 +38,7 @@ node_modules/
 .pnpm-store/
 
 # Build output
-api/dist/
+# api/dist/  # 取消注释以包含API构建文件
 dist/
 
 # Prisma
