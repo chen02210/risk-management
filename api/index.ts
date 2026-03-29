@@ -1,9 +1,10 @@
-/**
- * Vercel deploy entry handler, for serverless deployment, please don't modify this file
- */
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import http from 'http';
 import app from './app.js';
 
-export default function handler(req: VercelRequest, res: VercelResponse) {
-  return app(req, res);
-}
+const PORT = process.env.PORT || 3001;
+
+const server = http.createServer(app);
+
+server.listen(PORT, () => {
+  console.log(`Server ready on port ${PORT}`);
+});
