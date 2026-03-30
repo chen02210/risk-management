@@ -8,7 +8,8 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { formatDate } from '@/lib/utils'
-import { AlertTriangle, CheckCircle, XCircle, MinusCircle, Clock, Plus, Search, Edit, Trash2, X } from 'lucide-react'
+import { AlertTriangle, CheckCircle, XCircle, MinusCircle, Clock, Plus, Search, Edit, Trash2, X, Upload } from 'lucide-react'
+import { ExcelImportDialog } from '@/components/ExcelImportDialog'
 
 interface RiskCheck {
   id: string
@@ -106,6 +107,7 @@ export default function ChecksPage() {
   
   // 对话框状态
   const [showDialog, setShowDialog] = useState(false)
+  const [showImportDialog, setShowImportDialog] = useState(false)
   const [users, setUsers] = useState<User[]>([])
   const [formData, setFormData] = useState({
     area: '',
@@ -311,10 +313,16 @@ export default function ChecksPage() {
           <h2 className="text-2xl font-bold text-gray-900">风险检查表</h2>
           <p className="text-gray-500">定期检查记录和问题整改进度跟踪</p>
         </div>
-        <Button onClick={openCreateDialog}>
-          <Plus className="w-4 h-4 mr-2" />
-          新增检查
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setShowImportDialog(true)}>
+            <Upload className="w-4 h-4 mr-2" />
+            导入Excel
+          </Button>
+          <Button onClick={openCreateDialog}>
+            <Plus className="w-4 h-4 mr-2" />
+            新增检查
+          </Button>
+        </div>
       </div>
 
       {/* 统计卡片 */}
@@ -547,6 +555,32 @@ export default function ChecksPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Excel导入对话框 */}
+      <ExcelImportDialog
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+        title="风险检查导入"
+        templateHeaders={['检查区域', '风险类别', '检查项目', '检查标准', '检查方法', '检查日期', '检查人', '检查结果', '问题描述', '风险等级', '整改措施', '整改期限', '整改责任人']}
+        templateFileName="风险检查"
+        onImport={async (data) => {
+          const res = await fetch('/api/checks/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ data }),
+          })
+          const result = await res.json()
+          if (result.code === 0) {
+            return result.data
+          } else {
+            throw new Error(result.message)
+          }
+        }}
+        onSuccess={() => {
+          fetchChecks()
+          setTimeout(() => setShowImportDialog(false), 1500)
+        }}
+      />
 
       {/* 创建检查对话框 */}
       {showDialog && (

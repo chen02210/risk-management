@@ -7,8 +7,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { ExcelImportDialog } from '@/components/ExcelImportDialog'
 import { measureStatusLabels, measureStatusColors, formatDate, formatAmount } from '@/lib/utils'
-import { Plus, Search, Edit, Trash2, X } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, X, Upload } from 'lucide-react'
 
 interface Measure {
   id: string
@@ -76,6 +77,12 @@ export default function MeasuresPage() {
   const [showDialog, setShowDialog] = useState(false)
   const [dialogMode, setDialogMode] = useState<'create' | 'edit'>('create')
   const [editingId, setEditingId] = useState<string | null>(null)
+  
+  // 导入对话框状态
+  const [showImportDialog, setShowImportDialog] = useState(false)
+  
+  // 模板表头
+  const templateHeaders = ['关联风险编号', '措施描述', '责任部门', '责任人', '开始日期', '计划完成日期', '预算(万元)', '状态']
   
   // 表单数据
   const [risks, setRisks] = useState<Risk[]>([])
@@ -247,10 +254,16 @@ export default function MeasuresPage() {
           <h2 className="text-2xl font-bold text-gray-900">风险应对措施</h2>
           <p className="text-gray-500">风险应对措施的跟踪和管理</p>
         </div>
-        <Button onClick={openCreateDialog}>
-          <Plus className="w-4 h-4 mr-2" />
-          新增措施
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setShowImportDialog(true)}>
+            <Upload className="w-4 h-4 mr-2" />
+            导入
+          </Button>
+          <Button onClick={openCreateDialog}>
+            <Plus className="w-4 h-4 mr-2" />
+            新增措施
+          </Button>
+        </div>
       </div>
 
       {/* 统计卡片 */}
@@ -555,6 +568,31 @@ export default function MeasuresPage() {
           </div>
         </div>
       )}
+
+      {/* Excel导入对话框 */}
+      <ExcelImportDialog
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+        title="风险应对措施"
+        templateHeaders={templateHeaders}
+        templateFileName="措施导入模板"
+        onImport={async (data) => {
+          const res = await fetch('/api/measures/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ data }),
+          })
+          const result = await res.json()
+          if (result.code === 0) {
+            return result.data
+          }
+          throw new Error(result.message)
+        }}
+        onSuccess={() => {
+          fetchMeasures()
+          setShowImportDialog(false)
+        }}
+      />
     </div>
   )
 }

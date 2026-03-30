@@ -8,7 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { riskLevelColors, riskCategoryLabel, formatDate } from '@/lib/utils'
-import { Search, Plus, Edit, Trash2, Eye } from 'lucide-react'
+import { Search, Plus, Edit, Trash2, Eye, Upload } from 'lucide-react'
+import { ExcelImportDialog } from '@/components/ExcelImportDialog'
 
 interface Risk {
   id: string
@@ -52,6 +53,7 @@ export default function RisksPage() {
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
   const [levelFilter, setLevelFilter] = useState('')
+  const [importOpen, setImportOpen] = useState(false)
 
   useEffect(() => {
     fetchRisks()
@@ -125,10 +127,16 @@ export default function RisksPage() {
           <h2 className="text-2xl font-bold text-gray-900">风险登记台账</h2>
           <p className="text-gray-500">风险识别、评估和跟踪管理</p>
         </div>
-        <Button onClick={() => router.push('/dashboard/risks/new')}>
-          <Plus className="w-4 h-4 mr-2" />
-          新增风险
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setImportOpen(true)}>
+            <Upload className="w-4 h-4 mr-2" />
+            导入Excel
+          </Button>
+          <Button onClick={() => router.push('/dashboard/risks/new')}>
+            <Plus className="w-4 h-4 mr-2" />
+            新增风险
+          </Button>
+        </div>
       </div>
 
       {/* 筛选栏 */}
@@ -260,6 +268,29 @@ export default function RisksPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* 导入对话框 */}
+      <ExcelImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        title="风险登记"
+        templateHeaders={['风险名称', '风险类别', '风险描述', '潜在后果', '风险来源', '可能性(1-5)', '影响度(1-5)', '应对策略', '责任部门', '责任人', '下次评估日期']}
+        templateFileName="风险台账"
+        onImport={async (data) => {
+          const res = await fetch('/api/risks/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ data })
+          })
+          const result = await res.json()
+          if (result.code === 0) {
+            fetchRisks()
+            return result.data
+          }
+          throw new Error(result.message)
+        }}
+        onSuccess={() => setImportOpen(false)}
+      />
     </div>
   )
 }

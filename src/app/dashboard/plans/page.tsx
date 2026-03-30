@@ -8,7 +8,8 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { formatDate } from '@/lib/utils'
-import { AlertCircle, Calendar, CheckCircle, Clock, Plus, RefreshCw, Search, Shield, Trash2, Edit, History, AlertTriangle } from 'lucide-react'
+import { ExcelImportDialog } from '@/components/ExcelImportDialog'
+import { AlertCircle, Calendar, CheckCircle, Clock, Plus, RefreshCw, Search, Shield, Trash2, Edit, History, AlertTriangle, Upload } from 'lucide-react'
 
 interface EmergencyPlan {
   id: string
@@ -62,7 +63,74 @@ export default function EmergencyPlansPage() {
   const [showEditModal, setShowEditModal] = useState(false)
   const [showDrillModal, setShowDrillModal] = useState(false)
   const [showVersionModal, setShowVersionModal] = useState(false)
+  const [showImportDialog, setShowImportDialog] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<EmergencyPlan | null>(null)
+
+  // Excel导入模板表头
+  const templateHeaders = ['预案名称', '关联风险编号', '适用场景', '触发条件', '应急总指挥', '现场指挥', '响应时限', '演练频率', '责任部门']
+
+  // 演练频率映射（中文转英文）
+  const drillFrequencyMap: Record<string, string> = {
+    '每月': 'monthly',
+    '每季度': 'quarterly',
+    '每半年': 'half_yearly',
+    '每年': 'yearly',
+  }
+
+  // 处理导入数据
+  const handleImport = async (data: any[]) => {
+    const results = {
+      success: 0,
+      error: 0,
+      errors: [] as string[],
+    }
+
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i]
+      try {
+        // 验证必填字段
+        if (!row['预案名称']) {
+          results.error++
+          results.errors.push(`第${i + 2}行: 预案名称为必填项`)
+          continue
+        }
+
+        // 转换演练频率
+        const drillFrequency = row['演练频率'] ? drillFrequencyMap[row['演练频率']] : null
+
+        const importData = {
+          name: row['预案名称'],
+          linked_risk_no: row['关联风险编号'] || null,
+          applicable_scenario: row['适用场景'] || null,
+          trigger_condition: row['触发条件'] || null,
+          commander: row['应急总指挥'] || null,
+          site_commander: row['现场指挥'] || null,
+          response_time_limit: row['响应时限'] || null,
+          drill_frequency: drillFrequency,
+          dept_name: row['责任部门'] || null,
+        }
+
+        const res = await fetch('/api/plans/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(importData),
+        })
+
+        const result = await res.json()
+        if (result.code === 0) {
+          results.success++
+        } else {
+          results.error++
+          results.errors.push(`第${i + 2}行: ${result.message || '导入失败'}`)
+        }
+      } catch (error) {
+        results.error++
+        results.errors.push(`第${i + 2}行: ${(error as Error).message}`)
+      }
+    }
+
+    return results
+  }
   const [formData, setFormData] = useState<Partial<EmergencyPlan>>({
     name: '',
     linked_risk_no: '',
@@ -311,9 +379,14 @@ export default function EmergencyPlansPage() {
           <h2 className="text-2xl font-bold text-gray-900">应急预案管理</h2>
           <p className="text-gray-500">应急预案的创建、演练跟踪和版本管理</p>
         </div>
-        <Button onClick={() => { resetForm(); setShowCreateModal(true); }}>
-          <Plus className="w-4 h-4 mr-2" />新增预案
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setShowImportDialog(true)}>
+            <Upload className="w-4 h-4 mr-2" />导入
+          </Button>
+          <Button onClick={() => { resetForm(); setShowCreateModal(true); }}>
+            <Plus className="w-4 h-4 mr-2" />新增预案
+          </Button>
+        </div>
       </div>
 
       {/* 统计卡片 */}
@@ -741,6 +814,20 @@ export default function EmergencyPlansPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Excel导入对话框 */}
+      <ExcelImportDialog
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+        title="应急预案导入"
+        templateHeaders={templateHeaders}
+        templateFileName="应急预案导入模板"
+        onImport={handleImport}
+        onSuccess={() => {
+          fetchPlans()
+          setShowImportDialog(false)
+        }}
+      />
     </div>
   )
 }

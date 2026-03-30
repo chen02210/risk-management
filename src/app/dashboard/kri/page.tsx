@@ -29,9 +29,11 @@ import {
   Plus,
   Search,
   BarChart3,
-  Activity
+  Activity,
+  Upload
 } from 'lucide-react'
 import { kriStatusColors } from '@/lib/utils'
+import { ExcelImportDialog } from '@/components/ExcelImportDialog'
 
 // 类型定义
 interface KRIMonthlyData {
@@ -477,6 +479,9 @@ const KRIDetailDialog = ({ kri, onDataUpdate }: { kri: KRI; onDataUpdate: () => 
   )
 }
 
+// 模板表头
+const templateHeaders = ['指标名称', '关联风险编号', '指标说明', '计算公式', '监测频率', '单位', '目标值', '黄色预警线', '红色警戒线', '责任部门']
+
 // 主页面组件
 export default function KRIPage() {
   const [kris, setKris] = useState<KRI[]>([])
@@ -489,6 +494,7 @@ export default function KRIPage() {
   
   // 创建对话框状态
   const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [showImportDialog, setShowImportDialog] = useState(false)
   const [departments, setDepartments] = useState<{id: string, name: string}[]>([])
   const [createForm, setCreateForm] = useState({
     name: '',
@@ -613,6 +619,26 @@ export default function KRIPage() {
     }
   }
 
+  // 处理Excel导入
+  const handleImport = async (data: any[]) => {
+    try {
+      const res = await fetch('/api/kri/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data }),
+      })
+      const result = await res.json()
+      if (result.code === 0) {
+        return result.data as { success: number; error: number; errors: string[] }
+      } else {
+        throw new Error(result.message || '导入失败')
+      }
+    } catch (error) {
+      console.error('Import error:', error)
+      throw error
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* 页面标题 */}
@@ -621,10 +647,16 @@ export default function KRIPage() {
           <h2 className="text-2xl font-bold text-gray-900">KRI监控预警</h2>
           <p className="text-gray-500">关键风险指标实时监控与预警管理</p>
         </div>
-        <Button onClick={openCreateDialog}>
-          <Plus className="w-4 h-4 mr-1" />
-          新增KRI
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setShowImportDialog(true)}>
+            <Upload className="w-4 h-4 mr-1" />
+            导入
+          </Button>
+          <Button onClick={openCreateDialog}>
+            <Plus className="w-4 h-4 mr-1" />
+            新增KRI
+          </Button>
+        </div>
       </div>
 
       {/* 统计卡片 */}
@@ -841,6 +873,17 @@ export default function KRIPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Excel导入对话框 */}
+      <ExcelImportDialog
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+        title="KRI指标导入"
+        templateHeaders={templateHeaders}
+        templateFileName="KRI导入模板"
+        onImport={handleImport}
+        onSuccess={fetchKris}
+      />
 
       {/* 创建KRI对话框 */}
       {showCreateDialog && (

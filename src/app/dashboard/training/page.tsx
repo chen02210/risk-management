@@ -11,7 +11,8 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Calendar, Users, BookOpen, TrendingUp, Star, Award, Clock } from 'lucide-react'
+import { Calendar, Users, BookOpen, TrendingUp, Star, Award, Clock, Upload } from 'lucide-react'
+import { ExcelImportDialog } from '@/components/ExcelImportDialog'
 import { formatDate, trainingCategoryLabels, trainingLevelLabels, trainingMethodLabels, instructorSourceLabels, examMethodLabels, getEffectScoreColor, getPassRateColor } from '@/lib/utils'
 
 interface Training {
@@ -121,6 +122,25 @@ export default function TrainingPage() {
   const [filterEndDate, setFilterEndDate] = useState('')
   const [activeTab, setActiveTab] = useState('list')
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear())
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
+
+  // 模板表头定义
+  const templateHeaders = [
+    '培训日期',
+    '培训主题',
+    '培训类别',
+    '培训级别',
+    '培训对象',
+    '计划人数',
+    '实际参加人数',
+    '培训时长(小时)',
+    '培训讲师',
+    '讲师来源',
+    '培训方式',
+    '考核方式',
+    '考核通过率(%)',
+    '培训效果评分(1-5)',
+  ]
 
   useEffect(() => {
     fetchTrainings()
@@ -336,15 +356,20 @@ export default function TrainingPage() {
               <CardTitle>培训管理</CardTitle>
               <CardDescription>培训计划、实施记录和效果评估</CardDescription>
             </div>
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-              <DialogTrigger asChild>
-                <Button onClick={() => {
-                  setEditingTraining(null)
-                  setFormData(initialFormData)
-                }}>
-                  新增培训
-                </Button>
-              </DialogTrigger>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+                <Upload className="w-4 h-4 mr-2" />
+                导入Excel
+              </Button>
+              <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button onClick={() => {
+                    setEditingTraining(null)
+                    setFormData(initialFormData)
+                  }}>
+                    新增培训
+                  </Button>
+                </DialogTrigger>
               <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>
@@ -620,6 +645,7 @@ export default function TrainingPage() {
                 </Tabs>
               </DialogContent>
             </Dialog>
+            </div>
           </div>
         </CardHeader>
         
@@ -929,6 +955,32 @@ export default function TrainingPage() {
           </Tabs>
         </CardContent>
       </Card>
+
+      {/* Excel导入对话框 */}
+      <ExcelImportDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        title="培训记录导入"
+        templateHeaders={templateHeaders}
+        templateFileName="培训记录导入模板"
+        onImport={async (data) => {
+          const res = await fetch('/api/training/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ data }),
+          })
+          const result = await res.json()
+          if (result.code !== 0) {
+            throw new Error(result.message)
+          }
+          return result.data
+        }}
+        onSuccess={() => {
+          fetchTrainings()
+          fetchStats()
+          setImportDialogOpen(false)
+        }}
+      />
     </div>
   )
 }

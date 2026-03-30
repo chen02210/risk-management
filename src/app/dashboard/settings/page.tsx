@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -15,9 +15,11 @@ import {
   DialogTitle,
   DialogFooter,
   DialogTrigger,
+  DialogDescription,
 } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Upload, Download, FileSpreadsheet } from 'lucide-react'
 
 // 用户角色选项
 const roleOptions = [
@@ -305,6 +307,162 @@ export default function SettingsPage() {
     setIsUserDialogOpen(true)
   }
 
+  // ==================== 导入功能状态 ====================
+  const [isDeptImportOpen, setIsDeptImportOpen] = useState(false)
+  const [isUserImportOpen, setIsUserImportOpen] = useState(false)
+  const [importData, setImportData] = useState<any[]>([])
+  const [importLoading, setImportLoading] = useState(false)
+  const [importResult, setImportResult] = useState<{success: number, error: number, errors: string[]} | null>(null)
+  const deptFileInputRef = useRef<HTMLInputElement>(null)
+  const userFileInputRef = useRef<HTMLInputElement>(null)
+
+  // 解析Excel文件
+  const parseExcelFile = async (file: File): Promise<any[]> => {
+    const XLSX = await import('xlsx')
+    const arrayBuffer = await file.arrayBuffer()
+    const workbook = XLSX.read(arrayBuffer, { type: 'array' })
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
+    const data = XLSX.utils.sheet_to_json(firstSheet)
+    return data
+  }
+
+  // 下载部门导入模板
+  const downloadDeptTemplate = async () => {
+    const XLSX = await import('xlsx')
+    const headers = ['部门名称', '上级部门', '部门描述']
+    const exampleData = [
+      { '部门名称': '技术部', '上级部门': '', '部门描述': '负责产品研发' },
+      { '部门名称': '前端组', '上级部门': '技术部', '部门描述': '负责前端开发' },
+    ]
+    const worksheet = XLSX.utils.json_to_sheet(exampleData, { header: headers })
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, '部门导入模板')
+    XLSX.writeFile(workbook, '部门导入模板.xlsx')
+  }
+
+  // 下载用户导入模板
+  const downloadUserTemplate = async () => {
+    const XLSX = await import('xlsx')
+    const headers = ['姓名', '邮箱', '手机号', '角色', '部门']
+    const exampleData = [
+      { '姓名': '张三', '邮箱': 'zhangsan@example.com', '手机号': '13800138000', '角色': '普通用户', '部门': '技术部' },
+      { '姓名': '李四', '邮箱': 'lisi@example.com', '手机号': '13900139000', '角色': '部门管理员', '部门': '技术部' },
+    ]
+    const worksheet = XLSX.utils.json_to_sheet(exampleData, { header: headers })
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, '用户导入模板')
+    XLSX.writeFile(workbook, '用户导入模板.xlsx')
+  }
+
+  // 处理部门文件选择
+  const handleDeptFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    
+    try {
+      setImportLoading(true)
+      const data = await parseExcelFile(file)
+      setImportData(data)
+      setImportResult(null)
+    } catch (error) {
+      alert('文件解析失败，请检查文件格式')
+    } finally {
+      setImportLoading(false)
+    }
+  }
+
+  // 处理用户文件选择
+  const handleUserFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    
+    try {
+      setImportLoading(true)
+      const data = await parseExcelFile(file)
+      setImportData(data)
+      setImportResult(null)
+    } catch (error) {
+      alert('文件解析失败，请检查文件格式')
+    } finally {
+      setImportLoading(false)
+    }
+  }
+
+  // 提交部门导入
+  const handleDeptImport = async () => {
+    if (importData.length === 0) {
+      alert('请先选择文件')
+      return
+    }
+
+    try {
+      setImportLoading(true)
+      const res = await fetch('/api/settings/departments/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: importData }),
+      })
+
+      const result = await res.json()
+      if (result.code === 0) {
+        setImportResult(result.data)
+        fetchDepartments()
+      } else {
+        alert(result.message)
+      }
+    } catch (error) {
+      console.error('Import error:', error)
+      alert('导入失败')
+    } finally {
+      setImportLoading(false)
+    }
+  }
+
+  // 提交用户导入
+  const handleUserImport = async () => {
+    if (importData.length === 0) {
+      alert('请先选择文件')
+      return
+    }
+
+    try {
+      setImportLoading(true)
+      const res = await fetch('/api/settings/users/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: importData }),
+      })
+
+      const result = await res.json()
+      if (result.code === 0) {
+        setImportResult(result.data)
+        fetchUsers()
+      } else {
+        alert(result.message)
+      }
+    } catch (error) {
+      console.error('Import error:', error)
+      alert('导入失败')
+    } finally {
+      setImportLoading(false)
+    }
+  }
+
+  // 关闭导入对话框
+  const closeDeptImport = () => {
+    setIsDeptImportOpen(false)
+    setImportData([])
+    setImportResult(null)
+    if (deptFileInputRef.current) deptFileInputRef.current.value = ''
+  }
+
+  const closeUserImport = () => {
+    setIsUserImportOpen(false)
+    setImportData([])
+    setImportResult(null)
+    if (userFileInputRef.current) userFileInputRef.current.value = ''
+  }
+
   // 获取角色标签样式
   const getRoleBadgeStyle = (role: string) => {
     const styles: Record<string, string> = {
@@ -352,6 +510,10 @@ export default function SettingsPage() {
                   onChange={(e) => setDeptSearch(e.target.value)}
                   className="w-64"
                 />
+                <Button variant="outline" onClick={() => setIsDeptImportOpen(true)}>
+                  <Upload className="w-4 h-4 mr-2" />
+                  导入部门
+                </Button>
                 <Button onClick={openAddDeptDialog}>新增部门</Button>
               </div>
             </CardHeader>
@@ -452,6 +614,10 @@ export default function SettingsPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                <Button variant="outline" onClick={() => setIsUserImportOpen(true)}>
+                  <Upload className="w-4 h-4 mr-2" />
+                  导入用户
+                </Button>
                 <Button onClick={openAddUserDialog}>新增用户</Button>
               </div>
             </CardHeader>
@@ -725,6 +891,143 @@ export default function SettingsPage() {
             </Button>
             <Button onClick={handleSaveUser}>
               {editingUser ? '保存' : '创建'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 部门导入对话框 */}
+      <Dialog open={isDeptImportOpen} onOpenChange={closeDeptImport}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>导入部门</DialogTitle>
+            <DialogDescription>
+              请上传Excel文件，支持 .xlsx 格式
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={downloadDeptTemplate} className="flex-1">
+                <Download className="w-4 h-4 mr-2" />
+                下载导入模板
+              </Button>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="dept-import-file">选择Excel文件</Label>
+              <Input
+                id="dept-import-file"
+                ref={deptFileInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleDeptFileChange}
+              />
+            </div>
+            {importData.length > 0 && (
+              <div className="text-sm text-gray-600">
+                已读取 <strong>{importData.length}</strong> 条数据
+              </div>
+            )}
+            {importResult && (
+              <div className="space-y-2">
+                <div className="text-sm font-medium">导入结果：</div>
+                <div className="flex gap-4 text-sm">
+                  <span className="text-green-600">成功: {importResult.success}</span>
+                  <span className="text-red-600">失败: {importResult.error}</span>
+                </div>
+                {importResult.errors.length > 0 && (
+                  <div className="max-h-40 overflow-y-auto bg-gray-50 p-3 rounded text-sm">
+                    {importResult.errors.map((error, idx) => (
+                      <div key={idx} className="text-red-600 mb-1">{error}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="bg-blue-50 p-3 rounded text-sm text-blue-700">
+              <div className="font-medium mb-1">导入说明：</div>
+              <ul className="list-disc list-inside space-y-1">
+                <li>表头必须包含：部门名称、上级部门、部门描述</li>
+                <li>部门名称为必填项，且不能重复</li>
+                <li>上级部门需填写已存在的部门名称，如不填写则为顶级部门</li>
+              </ul>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDeptImport}>
+              关闭
+            </Button>
+            <Button onClick={handleDeptImport} disabled={importLoading || importData.length === 0}>
+              {importLoading ? '导入中...' : '开始导入'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 用户导入对话框 */}
+      <Dialog open={isUserImportOpen} onOpenChange={closeUserImport}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>导入用户</DialogTitle>
+            <DialogDescription>
+              请上传Excel文件，支持 .xlsx 格式
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={downloadUserTemplate} className="flex-1">
+                <Download className="w-4 h-4 mr-2" />
+                下载导入模板
+              </Button>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="user-import-file">选择Excel文件</Label>
+              <Input
+                id="user-import-file"
+                ref={userFileInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleUserFileChange}
+              />
+            </div>
+            {importData.length > 0 && (
+              <div className="text-sm text-gray-600">
+                已读取 <strong>{importData.length}</strong> 条数据
+              </div>
+            )}
+            {importResult && (
+              <div className="space-y-2">
+                <div className="text-sm font-medium">导入结果：</div>
+                <div className="flex gap-4 text-sm">
+                  <span className="text-green-600">成功: {importResult.success}</span>
+                  <span className="text-red-600">失败: {importResult.error}</span>
+                </div>
+                {importResult.errors.length > 0 && (
+                  <div className="max-h-40 overflow-y-auto bg-gray-50 p-3 rounded text-sm">
+                    {importResult.errors.map((error, idx) => (
+                      <div key={idx} className="text-red-600 mb-1">{error}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="bg-blue-50 p-3 rounded text-sm text-blue-700">
+              <div className="font-medium mb-1">导入说明：</div>
+              <ul className="list-disc list-inside space-y-1">
+                <li>表头必须包含：姓名、邮箱、手机号、角色、部门</li>
+                <li>姓名和邮箱为必填项，邮箱格式需正确</li>
+                <li>邮箱不能重复，重复邮箱将被跳过</li>
+                <li>角色可选值：公司管理员、部门管理员、普通用户、只读用户</li>
+                <li>部门需填写已存在的部门名称，如不填写则不分配部门</li>
+                <li>导入用户的默认密码为：<strong>password123</strong></li>
+              </ul>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeUserImport}>
+              关闭
+            </Button>
+            <Button onClick={handleUserImport} disabled={importLoading || importData.length === 0}>
+              {importLoading ? '导入中...' : '开始导入'}
             </Button>
           </DialogFooter>
         </DialogContent>

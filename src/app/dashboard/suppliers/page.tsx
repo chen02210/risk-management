@@ -11,7 +11,8 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { AlertCircle, Calendar, TrendingUp, AlertTriangle, CheckCircle } from 'lucide-react'
+import { AlertCircle, Calendar, TrendingUp, AlertTriangle, CheckCircle, Upload } from 'lucide-react'
+import { ExcelImportDialog } from '@/components/ExcelImportDialog'
 import { formatDate } from '@/lib/utils'
 
 interface Supplier {
@@ -147,6 +148,7 @@ export default function SuppliersPage() {
   const [filterStatus, setFilterStatus] = useState('active')
   const [expiringCount, setExpiringCount] = useState(0)
   const [activeTab, setActiveTab] = useState('list')
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
 
   useEffect(() => {
     fetchSuppliers()
@@ -253,6 +255,41 @@ export default function SuppliersPage() {
       alert('删除失败')
     }
   }
+
+  const handleImport = async (data: any[]) => {
+    try {
+      const res = await fetch('/api/suppliers/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data }),
+      })
+      const result = await res.json()
+      if (result.code === 0) {
+        fetchSuppliers()
+        fetchExpiringCount()
+      }
+      return result.data
+    } catch (error) {
+      console.error('Import error:', error)
+      return { success: 0, error: data.length, errors: ['导入请求失败'] }
+    }
+  }
+
+  const templateHeaders = [
+    '供应商名称',
+    '供应物料类别',
+    '具体供应品种',
+    '供应份额(%)',
+    '合作年限',
+    '交期达成率(%)',
+    '质量合格率(%)',
+    '价格竞争力(1-5)',
+    '财务稳健性(1-5)',
+    '服务配合度(1-5)',
+    '有框架协议',
+    '协议到期日',
+    '评估人',
+  ]
 
   const handleEvaluate = (supplier: Supplier) => {
     setEditingSupplier(supplier)
@@ -361,16 +398,21 @@ export default function SuppliersPage() {
               <CardTitle>供应商风险管理</CardTitle>
               <CardDescription>供应商评估、风险监控和协议管理</CardDescription>
             </div>
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-              <DialogTrigger asChild>
-                <Button onClick={() => {
-                  setEditingSupplier(null)
-                  setFormData(initialFormData)
-                  setActiveTab('list')
-                }}>
-                  新增供应商
-                </Button>
-              </DialogTrigger>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+                <Upload className="w-4 h-4 mr-2" />
+                批量导入
+              </Button>
+              <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button onClick={() => {
+                    setEditingSupplier(null)
+                    setFormData(initialFormData)
+                    setActiveTab('list')
+                  }}>
+                    新增供应商
+                  </Button>
+                </DialogTrigger>
               <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>
@@ -635,6 +677,7 @@ export default function SuppliersPage() {
               </DialogContent>
             </Dialog>
           </div>
+          </div>
         </CardHeader>
         
         <CardContent>
@@ -774,6 +817,19 @@ export default function SuppliersPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Excel导入对话框 */}
+      <ExcelImportDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        title="供应商导入"
+        templateHeaders={templateHeaders}
+        templateFileName="供应商导入模板"
+        onImport={handleImport}
+        onSuccess={() => {
+          setImportDialogOpen(false)
+        }}
+      />
     </div>
   )
 }
