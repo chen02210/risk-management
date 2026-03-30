@@ -1,0 +1,661 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== 基础表 ====================
+
+enum CompanyPlan {
+  free
+  pro
+  enterprise
+}
+
+enum CompanyStatus {
+  active
+  suspended
+  expired
+}
+
+model Company {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @db.VarChar(100)
+  domain    String?  @unique @db.VarChar(100)
+  plan      CompanyPlan   @default(free)
+  status    CompanyStatus @default(active)
+  
+  // 联系方式
+  contact_name  String? @db.VarChar(100)
+  contact_phone String? @db.VarChar(20)
+  contact_email String? @db.VarChar(255)
+  
+  // 审计字段
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+  created_by    String?  @db.Uuid
+  deleted_at    DateTime?
+  
+  // 关联
+  departments   Department[]
+  users         User[]
+  risks         Risk[]
+  risk_measures RiskMeasure[]
+  kris          KRI[]
+  kri_monthly   KRIMonthlyData[]
+  emergency_plans EmergencyPlan[]
+  risk_checks   RiskCheck[]
+  suppliers     Supplier[]
+  trainings     Training[]
+  training_stats TrainingStats[]
+  audit_logs    AuditLog[]
+  
+  @@index([status])
+  @@index([plan])
+  @@map("companies")
+}
+
+model Department {
+  id            String    @id @default(uuid()) @db.Uuid
+  company_id    String    @db.Uuid
+  name          String    @db.VarChar(100)
+  description   String?   @db.Text
+  parent_id     String?   @db.Uuid
+  
+  // 审计字段
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  deleted_at    DateTime?
+  
+  // 关联
+  company       Company   @relation(fields: [company_id], references: [id])
+  parent        Department? @relation("DeptHierarchy", fields: [parent_id], references: [id])
+  children      Department[] @relation("DeptHierarchy")
+  users         User[]
+  risks         Risk[]
+  risk_measures RiskMeasure[]
+  kris          KRI[]
+  emergency_plans EmergencyPlan[]
+  
+  @@unique([company_id, name])
+  @@index([company_id])
+  @@index([parent_id])
+  @@map("departments")
+}
+
+enum UserRole {
+  super_admin    // 平台超级管理员
+  company_admin  // 公司管理员
+  dept_admin     // 部门管理员
+  user           // 普通用户
+  readonly       // 只读用户
+}
+
+enum UserStatus {
+  active
+  inactive
+  locked
+}
+
+model User {
+  id            String   @id @default(uuid()) @db.Uuid
+  company_id    String   @db.Uuid
+  email         String   @db.VarChar(255)
+  name          String   @db.VarChar(100)
+  password      String   @db.VarChar(255)
+  phone         String?  @db.VarChar(20)
+  role          UserRole @default(user)
+  dept_id       String?  @db.Uuid
+  status        UserStatus @default(active)
+  
+  // 登录信息
+  last_login    DateTime?
+  login_count   Int      @default(0)
+  last_ip       String?  @db.VarChar(50)
+  
+  // 审计字段
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+  created_by    String?  @db.Uuid
+  deleted_at    DateTime?
+  
+  // 关联
+  company       Company  @relation(fields: [company_id], references: [id])
+  department    Department? @relation(fields: [dept_id], references: [id])
+  
+  // 作为责任人的关联
+  owned_risks   Risk[]   @relation("RiskOwner")
+  owned_measures RiskMeasure[] @relation("MeasureOwner")
+  owned_checks  RiskCheck[] @relation("CheckOwner")
+  
+  @@unique([company_id, email])
+  @@index([company_id])
+  @@index([company_id, status])
+  @@index([email])
+  @@map("users")
+}
+
+// ==================== 风险核心模块 ====================
+
+enum RiskCategory {
+  safety        // 安全环保 S
+  production    // 生产运营 P
+  quality       // 质量 Q
+  supply_chain  // 供应链 C
+  financial     // 财务 F
+  compliance    // 合规 R
+  information   // 信息安全 I
+}
+
+enum RiskResponseStrategy {
+  avoid     // 规避
+  reduce    // 降低
+  transfer  // 转移
+  accept    // 接受
+}
+
+enum RiskStatus {
+  active      // 活动中
+  closed      // 已关闭
+  transferred // 已转移
+  pending     // 待评估
+}
+
+model Risk {
+  id              String   @id @default(uuid()) @db.Uuid
+  company_id      String   @db.Uuid
+  risk_no         String   @db.VarChar(50)
+  name            String   @db.VarChar(200)
+  category        RiskCategory
+  description     String?  @db.Text
+  consequence     String?  @db.Text
+  source          String?  @db.VarChar(100)
+  
+  // 风险评估
+  likelihood      Int      @db.SmallInt
+  impact          Int      @db.SmallInt
+  risk_value      Int      @db.SmallInt
+  risk_level      String   @db.VarChar(20)
+  
+  // 应对策略
+  response_strategy RiskResponseStrategy?
+  
+  // 责任信息
+  dept_id         String?  @db.Uuid
+  owner_id        String?  @db.Uuid
+  
+  // 状态和时间
+  status          RiskStatus @default(pending)
+  last_evaluate_at DateTime? @db.Date
+  next_evaluate_at DateTime? @db.Date
+  
+  // 残余风险
+  residual_likelihood Int?   @db.SmallInt
+  residual_impact     Int?   @db.SmallInt
+  residual_risk_value Int?   @db.SmallInt
+  residual_risk_level String? @db.VarChar(20)
+  
+  // 审计字段
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  created_by      String?  @db.Uuid
+  updated_by      String?  @db.Uuid
+  deleted_at      DateTime?
+  
+  // 关联
+  company         Company  @relation(fields: [company_id], references: [id])
+  department      Department? @relation(fields: [dept_id], references: [id])
+  owner           User?    @relation("RiskOwner", fields: [owner_id], references: [id])
+  measures        RiskMeasure[]
+  
+  @@unique([company_id, risk_no])
+  @@index([company_id])
+  @@index([company_id, category])
+  @@index([company_id, status])
+  @@index([company_id, risk_level])
+  @@index([company_id, dept_id])
+  @@index([next_evaluate_at])
+  @@map("risks")
+}
+
+enum MeasureStatus {
+  pending       // 待开始
+  in_progress   // 进行中
+  completed     // 已完成
+  delayed       // 已延期
+  cancelled     // 已取消
+}
+
+model RiskMeasure {
+  id                String   @id @default(uuid()) @db.Uuid
+  company_id        String   @db.Uuid
+  risk_id           String   @db.Uuid
+  measure_no        Int
+  description       String   @db.Text
+  
+  // 责任分配
+  dept_id           String?  @db.Uuid
+  owner_id          String?  @db.Uuid
+  collaborator_dept String?  @db.Uuid
+  
+  // 时间安排
+  start_date        DateTime? @db.Date
+  plan_date         DateTime? @db.Date
+  actual_date       DateTime? @db.Date
+  
+  // 预算
+  budget            Decimal? @db.Decimal(12, 2)
+  actual_cost       Decimal? @db.Decimal(12, 2)
+  
+  // 状态和评估
+  status            MeasureStatus @default(pending)
+  effect_evaluation String?   @db.Text
+  remaining_issue   String?   @db.Text
+  
+  // 审计字段
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+  created_by        String?   @db.Uuid
+  updated_by        String?   @db.Uuid
+  deleted_at        DateTime?
+  
+  // 关联
+  company           Company   @relation(fields: [company_id], references: [id])
+  risk              Risk      @relation(fields: [risk_id], references: [id])
+  department        Department? @relation(fields: [dept_id], references: [id])
+  owner             User?     @relation("MeasureOwner", fields: [owner_id], references: [id])
+  
+  @@unique([risk_id, measure_no])
+  @@index([company_id])
+  @@index([company_id, status])
+  @@index([risk_id])
+  @@index([plan_date])
+  @@map("risk_measures")
+}
+
+// ==================== KRI模块 ====================
+
+enum KRIFrequency {
+  daily
+  weekly
+  monthly
+  quarterly
+  yearly
+}
+
+model KRI {
+  id                String   @id @default(uuid()) @db.Uuid
+  company_id        String   @db.Uuid
+  kri_no            String   @db.VarChar(50)
+  name              String   @db.VarChar(100)
+  linked_risk_no    String?  @db.VarChar(50)
+  description       String?  @db.Text
+  formula           String?  @db.Text
+  frequency         KRIFrequency @default(monthly)
+  unit              String?  @db.VarChar(20)
+  
+  // 阈值设置
+  target            Decimal? @db.Decimal(10, 2)
+  warning_threshold Decimal? @db.Decimal(10, 2)
+  alert_threshold   Decimal? @db.Decimal(10, 2)
+  
+  // 责任部门
+  dept_id           String?  @db.Uuid
+  
+  // 审计字段
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+  created_by        String?  @db.Uuid
+  deleted_at        DateTime?
+  
+  // 关联
+  company           Company  @relation(fields: [company_id], references: [id])
+  department        Department? @relation(fields: [dept_id], references: [id])
+  monthly_data      KRIMonthlyData[]
+  
+  @@unique([company_id, kri_no])
+  @@index([company_id])
+  @@index([company_id, dept_id])
+  @@map("kris")
+}
+
+enum KRITrend {
+  up
+  down
+  stable
+}
+
+enum KRIStatus {
+  normal
+  warning
+  alert
+}
+
+model KRIMonthlyData {
+  id          String   @id @default(uuid()) @db.Uuid
+  kri_id      String   @db.Uuid
+  company_id  String   @db.Uuid
+  month       String   @db.VarChar(7)
+  value       Decimal  @db.Decimal(10, 2)
+  trend       KRITrend?
+  status      KRIStatus @default(normal)
+  notes       String?   @db.Text
+  
+  // 审计字段
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  created_by  String?   @db.Uuid
+  
+  // 关联
+  kri         KRI       @relation(fields: [kri_id], references: [id])
+  company     Company   @relation(fields: [company_id], references: [id])
+  
+  @@unique([kri_id, month])
+  @@index([company_id])
+  @@index([kri_id])
+  @@index([month])
+  @@map("kri_monthly_data")
+}
+
+// ==================== 应急预案 ====================
+
+enum DrillFrequency {
+  monthly
+  quarterly
+  half_yearly
+  yearly
+}
+
+model EmergencyPlan {
+  id                String   @id @default(uuid()) @db.Uuid
+  company_id        String   @db.Uuid
+  plan_no           String   @db.VarChar(50)
+  name              String   @db.VarChar(200)
+  linked_risk_no    String?  @db.VarChar(50)
+  
+  // 预案内容
+  applicable_scenario String? @db.Text
+  trigger_condition   String? @db.Text
+  commander           String? @db.VarChar(100)
+  site_commander      String? @db.VarChar(100)
+  response_time_limit String? @db.VarChar(50)
+  key_steps           String? @db.Text
+  resource_needs      String? @db.Text
+  
+  // 演练记录
+  drill_frequency     DrillFrequency?
+  last_drill          DateTime? @db.Date
+  next_drill          DateTime? @db.Date
+  drill_result        String?   @db.Text
+  improvement         String?   @db.Text
+  
+  // 版本管理
+  version             String    @default("1.0") @db.VarChar(20)
+  latest_revision     DateTime? @db.Date
+  
+  // 状态
+  status              String    @default("active") @db.VarChar(20)
+  dept_id             String?   @db.Uuid
+  
+  // 审计字段
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+  created_by          String?   @db.Uuid
+  updated_by          String?   @db.Uuid
+  deleted_at          DateTime?
+  
+  // 关联
+  company             Company   @relation(fields: [company_id], references: [id])
+  department          Department? @relation(fields: [dept_id], references: [id])
+  
+  @@unique([company_id, plan_no])
+  @@index([company_id])
+  @@index([company_id, status])
+  @@index([next_drill])
+  @@map("emergency_plans")
+}
+
+// ==================== 风险检查表 ====================
+
+enum CheckResult {
+  pass
+  fail
+  na
+}
+
+enum VerifyResult {
+  passed
+  failed
+  pending
+}
+
+model RiskCheck {
+  id              String   @id @default(uuid()) @db.Uuid
+  company_id      String   @db.Uuid
+  check_no        String   @db.VarChar(50)
+  area            String?  @db.VarChar(100)
+  category        String?  @db.VarChar(50)
+  check_item      String   @db.VarChar(200)
+  standard        String?  @db.Text
+  method          String?  @db.Text
+  
+  // 检查结果
+  result          CheckResult?
+  issue_desc      String?   @db.Text
+  risk_level      String?   @db.VarChar(20)
+  measure         String?   @db.Text
+  
+  // 整改跟踪
+  owner_id        String?   @db.Uuid
+  deadline        DateTime? @db.Date
+  verify_date     DateTime? @db.Date
+  verify_result   VerifyResult?
+  verifier        String?   @db.VarChar(100)
+  
+  // 检查日期
+  check_date      DateTime  @db.Date
+  checker         String?   @db.VarChar(100)
+  
+  // 审计字段
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  created_by      String?   @db.Uuid
+  deleted_at      DateTime?
+  
+  // 关联
+  company         Company   @relation(fields: [company_id], references: [id])
+  owner           User?     @relation("CheckOwner", fields: [owner_id], references: [id])
+  
+  @@unique([company_id, check_no])
+  @@index([company_id])
+  @@index([company_id, check_date])
+  @@index([company_id, result])
+  @@index([deadline])
+  @@map("risk_checks")
+}
+
+// ==================== 供应商管理 ====================
+
+enum SupplierStatus {
+  active
+  inactive
+  blacklisted
+}
+
+model Supplier {
+  id                    String   @id @default(uuid()) @db.Uuid
+  company_id            String   @db.Uuid
+  supplier_no           String   @db.VarChar(50)
+  name                  String   @db.VarChar(200)
+  supply_category       String?  @db.VarChar(50)
+  supply_items          String?  @db.Text
+  supply_share          Decimal? @db.Decimal(5, 2)
+  cooperation_years     Int?
+  replaceability        Int?     @db.SmallInt
+  
+  // 评估指标
+  on_time_rate          Decimal? @db.Decimal(5, 2)
+  quality_rate          Decimal? @db.Decimal(5, 2)
+  price_competitiveness Int?     @db.SmallInt
+  financial_stability   Int?     @db.SmallInt
+  service_cooperation   Int?     @db.SmallInt
+  
+  // 综合评分
+  total_score           Decimal? @db.Decimal(6, 2)
+  risk_level            String?  @db.VarChar(20)
+  
+  // 协议信息
+  has_agreement         Boolean? @default(false)
+  agreement_expire      DateTime? @db.Date
+  improvement_require   String?   @db.Text
+  
+  // 评估人
+  evaluator             String?   @db.VarChar(100)
+  evaluate_date         DateTime? @db.Date
+  status                SupplierStatus @default(active)
+  
+  // 审计字段
+  created_at            DateTime  @default(now())
+  updated_at            DateTime  @updatedAt
+  created_by            String?   @db.Uuid
+  deleted_at            DateTime?
+  
+  // 关联
+  company               Company   @relation(fields: [company_id], references: [id])
+  
+  @@unique([company_id, supplier_no])
+  @@index([company_id])
+  @@index([company_id, status])
+  @@index([company_id, risk_level])
+  @@map("suppliers")
+}
+
+// ==================== 培训管理 ====================
+
+enum TrainingMethod {
+  online
+  offline
+  hybrid
+}
+
+enum ExamMethod {
+  written
+  practical
+  oral
+  none
+}
+
+model Training {
+  id                String   @id @default(uuid()) @db.Uuid
+  company_id        String   @db.Uuid
+  training_no       String   @db.VarChar(50)
+  training_date     DateTime @db.Date
+  topic             String   @db.VarChar(200)
+  category          String?  @db.VarChar(50)
+  level             String?  @db.VarChar(50)
+  target_dept       String?  @db.VarChar(100)
+  
+  // 参与情况
+  plan_count        Int?
+  actual_count      Int?
+  hours             Decimal? @db.Decimal(4, 1)
+  
+  // 讲师信息
+  instructor        String?  @db.VarChar(100)
+  instructor_source String?  @db.VarChar(20)
+  method            TrainingMethod? @default(offline)
+  material          String?  @db.Text
+  
+  // 考核
+  exam_method       ExamMethod?
+  pass_rate         Decimal? @db.Decimal(5, 2)
+  effect_score      Decimal? @db.Decimal(3, 1)
+  
+  // 反馈
+  feedback          String?  @db.Text
+  improvement       String?  @db.Text
+  remark            String?  @db.Text
+  
+  // 审计字段
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+  created_by        String?  @db.Uuid
+  deleted_at        DateTime?
+  
+  // 关联
+  company           Company  @relation(fields: [company_id], references: [id])
+  
+  @@unique([company_id, training_no])
+  @@index([company_id])
+  @@index([company_id, training_date])
+  @@index([company_id, category])
+  @@map("trainings")
+}
+
+model TrainingStats {
+  id                String   @id @default(uuid()) @db.Uuid
+  company_id        String   @db.Uuid
+  stat_type         String   @db.VarChar(50)
+  target            String?  @db.VarChar(100)
+  
+  // 季度数据
+  q1_actual         String?  @db.VarChar(50)
+  q2_actual         String?  @db.VarChar(50)
+  q3_actual         String?  @db.VarChar(50)
+  q4_actual         String?  @db.VarChar(50)
+  year_total        String?  @db.VarChar(50)
+  achievement_rate  String?  @db.VarChar(20)
+  year              Int
+  
+  // 审计字段
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+  created_by        String?  @db.Uuid
+  
+  // 关联
+  company           Company  @relation(fields: [company_id], references: [id])
+  
+  @@unique([company_id, stat_type, year])
+  @@index([company_id])
+  @@index([company_id, year])
+  @@map("training_stats")
+}
+
+// ==================== 审计日志 ====================
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  EXPORT
+  IMPORT
+}
+
+model AuditLog {
+  id          String      @id @default(uuid()) @db.Uuid
+  company_id  String?     @db.Uuid
+  user_id     String?     @db.Uuid
+  user_name   String?     @db.VarChar(100)
+  action      AuditAction
+  resource    String      @db.VarChar(50)
+  resource_id String?     @db.VarChar(50)
+  details     String?     @db.Text
+  ip_address  String?     @db.VarChar(50)
+  user_agent  String?     @db.Text
+  created_at  DateTime    @default(now())
+  
+  // 关联
+  company     Company?    @relation(fields: [company_id], references: [id])
+  
+  @@index([company_id])
+  @@index([user_id])
+  @@index([action])
+  @@index([resource])
+  @@index([created_at])
+  @@map("audit_logs")
+}
