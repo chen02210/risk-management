@@ -1,0 +1,11 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "/api/:path*"
+    }
+  ],
+  "buildCommand": "pnpm config set ignore-scripts false && pnpm build",
+  "outputDirectory": "dist",
+  "installCommand": "pnpm install --ignore-scripts=false"
+}
